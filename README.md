@@ -8,10 +8,10 @@ The Popur Litter Box is a smart litter box that can be monitored and controlled 
 ## Prerequisites
 Before you begin, ensure you have the following:
 
-A Popur Litter Box
-An ESP32 microcontroller
-Home Assistant setup and running
-ESPHome running locally
+* A Popur Litter Box
+* An ESP32 microcontroller
+* Home Assistant setup and running
+* ESPHome running locally
 
 ## ESPHome Configuration
 1. Edit the ESPHome MQTT backend for ESP32:
@@ -32,8 +32,8 @@ add_idf_sdkconfig_option("CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY", True)
 4. Compile and upload the configuration
 
 ## Known Issues
-Expired Certificate: Popur's MQTT service uses an expired certificate, requiring disabled certificate verification in ESPHome, which is insecure.
-No Security: Popur's MQTT implementation lacks proper security. This issue has been raised with the Popur team.
+* Expired Certificate: Popur's MQTT service uses an expired certificate, requiring disabled certificate verification in ESPHome, which is insecure.
+* No Security: Popur's MQTT implementation lacks proper security. This issue has been raised with the Popur team.
 
 ## Contributing
 Contributions are welcome! If you have suggestions or improvements, please submit a pull request or open an issue on GitHub.
