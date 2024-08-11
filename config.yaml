@@ -7,6 +7,22 @@ esphome:
   name: $device_name
   friendly_name: $device_friendly_name
 
+  on_boot:
+    priority: -10
+    then:
+      - mqtt.publish:
+          topic: devcrpc/attr/${litterbox_id}
+          payload: '{"id":0,"method":"get_properties","params":[
+            {"did":"0","pid":3,"sid":2},
+            {"did":"0","pid":4,"sid":2},
+            {"did":"0","pid":5,"sid":2},
+            {"did":"0","pid":13,"sid":2},
+            {"did":"0","pid":17,"sid":2},
+            {"did":"0","pid":18,"sid":2},
+            {"did":"0","pid":8,"sid":2},
+            {"did":"0","pid":11,"sid":2}
+            ]}'
+
 esp32:
   board: esp32dev
   framework:
@@ -30,13 +46,27 @@ wifi:
 captive_portal:
 
 globals:
-  - id: popur_occupied
+  - id: occupied
     type: bool
-  - id: popur_running_status
+  - id: running_status
     type: bool
-  - id: popur_full_status
+  - id: full_status
     type: bool
-  - id: popur_num_times_cleaned
+  - id: num_times_cleaned
+    type: int
+  - id: num_times_cleaned_last
+    type: int
+  - id: manual_mode
+    type: bool
+  - id: curious_cat
+    type: bool
+  - id: leveling
+    type: int
+  - id: dnd_mode
+    type: bool
+  - id: display
+    type: int
+  - id: wait_time
     type: int
   
 mqtt:
@@ -46,49 +76,131 @@ mqtt:
     - topic: devsrpc/attr/${litterbox_id}
       then:
         - lambda: |-
-            if (x.containsKey("method") && x["method"] == "properties_changed" && x.containsKey("params")) {
-              if (x["params"][0]["pid"] == 2) {
-                id(popur_occupied) = x["params"][0]["value"] == 3;
-                id(popur_running_status) = x["params"][0]["value"] == 1;
-              } else if (x["params"][0]["pid"] == 6) {
-                id(popur_full_status) = x["params"][0]["value"] == 2;
-              } else if (x["params"][0]["pid"] == 8) {
-                id(popur_num_times_cleaned) = x["params"][0]["value"];
+            void update_property(int pid, int value) {
+              switch (pid) {
+                case 2:
+                  id(occupied) = (value == 3);
+                  id(running_status) = (value == 1);
+                  break;
+                case 3:
+                  id(manual_mode) = (value == 1);
+                  break;
+                case 4:
+                  id(curious_cat) = (value == 1);
+                  break;
+                case 5:
+                  id(leveling) = value;
+                  break;
+                case 13:
+                  id(dnd_mode) = (value == 1);
+                  break;
+                case 17:
+                  id(display) = value;
+                  break;
+                case 18:
+                  id(wait_time) = value;
+                  break;
+                case 6:
+                  id(full_status) = (value == 2);
+                  break;
+                case 8:
+                  id(num_times_cleaned) = value;
+                  break;
+                case 11:
+                  id(num_times_cleaned_last) = value;
+                  break;
+              }
+            }
+
+            if (x.containsKey("method") && (x["method"] == "properties_changed" || x["method"] == "get_properties") && x.containsKey("params")) {
+              for (auto param : x["params"].as<JsonArray>()) {
+                if (param.containsKey("pid") && param.containsKey("value")) {
+                  update_property(param["pid"], param["value"]);
+                }
               }
             }
         - component.update: popur_num_times_cleaned_sensor
         - binary_sensor.template.publish:
             id: popur_running_sensor
-            state: !lambda 'return id(popur_running_status);'
+            state: !lambda 'return id(running_status);'
         - binary_sensor.template.publish:
             id: popur_full_sensor
-            state: !lambda 'return id(popur_full_status);'
+            state: !lambda 'return id(full_status);'
+        - binary_sensor.template.publish:
+            id: popur_occupied_sensor
+            state: !lambda 'return id(occupied);'
+        - switch.template.publish:
+            id: popur_manual_mode_switch
+            state: !lambda 'return id(manual_mode);'
+        - switch.template.publish:
+            id: popur_curious_cat_switch
+            state: !lambda 'return id(curious_cat);'
+        - switch.template.publish:
+            id: popur_dnd_mode_switch
+            state: !lambda 'return id(dnd_mode);'
+        - select.template.publish:
+            id: popur_display_select
+            state: !lambda 'return id(display);'
 
 sensor:
   - platform: template
     name: Number of times cleaned
     id: popur_num_times_cleaned_sensor
     accuracy_decimals: 0
-    lambda: return id(popur_num_times_cleaned);
+    lambda: return id(num_times_cleaned);
 
 binary_sensor:
   - platform: template
     name: Litterbox occupied
     id: popur_occupied_sensor
     device_class: occupancy
-    lambda: return id(popur_occupied);
+    lambda: return id(occupied);
 
   - platform: template
     name: Current status
     id: popur_running_sensor
     device_class: running
-    lambda: return id(popur_running_status);
+    lambda: return id(running_status);
 
   - platform: template
     name: Litter bin capacity
     id: popur_full_sensor
     device_class: problem
-    lambda: return id(popur_full_status);
+    lambda: return id(full_status);
+
+switch:
+  - platform: template
+    name: Manual mode
+    id: popur_manual_mode_switch
+    lambda: return id(manual_mode);
+  
+  - platform: template
+    name: Curious cat mode
+    id: popur_curious_cat_switch
+    lambda: return id(curious_cat);
+
+  - platform: template
+    name: Do not disturb mode
+    id: popur_dnd_mode_switch
+    lambda: return id(dnd_mode);
+
+select:
+  - platform: template
+    name: Display
+    id: popur_display_select
+    options:
+      - "1"
+      - "2"
+      - "3"
+      - "4"
+      - "5"
+    initial: "0"
+    lambda: return id(display);
+    on_value:
+      then:
+        - mqtt.publish:
+            topic: devcrpc/attr/${litterbox_id}
+            payload: '{"method":"set_properties","params":{"did":"0","pid":17,"sid":2,,"value":id(popur_display_select)}}'
 
 button:
   - platform: template
